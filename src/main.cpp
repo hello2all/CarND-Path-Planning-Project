@@ -8,8 +8,8 @@
 #include "Eigen-3.3/Eigen/Core"
 #include "Eigen-3.3/Eigen/QR"
 #include "json.hpp"
-#include "EIDM.hpp"
 #include "spline.h"
+#include "fsm.hpp"
 
 using namespace std;
 
@@ -172,11 +172,14 @@ vector<double> getXY(double s, double d, vector<double> maps_s, vector<double> m
 double ref_vel = 0.0;
 // reference lane
 int lane = 1;
+// fsm
+FSM fsm(1, 80/3.6, 3);
+
 int main() {
   uWS::Hub h;
 
   // Initiate Enhanced Intelligent Driver Model car-following model
-  EIDM eidm(80.0);
+  // EIDM eidm(80.0);
 
   // Load up map values for waypoint's x,y,s and d normalized normal vectors
   vector<double> map_waypoints_x;
@@ -239,6 +242,8 @@ int main() {
           double car_yaw = j[1]["yaw"];
           double car_speed = j[1]["speed"];
 
+          ego_car ego = {car_x, car_y, car_s, car_d, car_yaw, car_speed};
+
           // Previous path data given to the Planner
           auto previous_path_x = j[1]["previous_path_x"];
           auto previous_path_y = j[1]["previous_path_y"];
@@ -257,6 +262,7 @@ int main() {
           }
           
           bool too_close = false;
+          double leading_veh_speed;
 
           //find ref_v to use
           for(int i = 0; i < sensor_fusion.size(); i++){
@@ -276,17 +282,23 @@ int main() {
               {
                 // ref_vel = 40;
                 too_close = true;
+                leading_veh_speed = check_speed;
+                // pass sensor fusion data along with ego vehicle states to finite state machine(fsm), use the fsm output as the desired lane
+                fsm.UpdateState(sensor_fusion, ego);
+                lane = fsm.current_lane;
               }
             }
           }
 
-          if(too_close){
-            ref_vel -= 0.36;
+          if(too_close && leading_veh_speed < car_speed){
+            ref_vel -= 0.18;
           }
           else if(ref_vel < 79.5){
             ref_vel += 0.36;
           }
+          
 
+          
 
           // Create a list of widely spaced (x,y) waypoints, evenly spaced at 30m
           /// later we will interpolate these waypoints with a spline and fill it in with more points that control speed
